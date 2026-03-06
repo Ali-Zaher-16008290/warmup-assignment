@@ -147,3 +147,141 @@ function metQuota(date, activeTime) {
 
     return activeSeconds >= quota;
 }
+
+
+
+// ============================================================
+// Function 5: addShiftRecord(textFile, shiftObj)
+// textFile: (typeof string) path to shifts text file
+// shiftObj: (typeof object) has driverID, driverName, date, startTime, endTime
+// Returns: object with 10 properties or empty object {}
+// ============================================================
+function addShiftRecord(textFile, shiftObj) {
+    let data = fs.readFileSync(textFile, "utf8");
+
+    let lines = data.trim().split("\n");
+
+    // Remove any blank lines
+    lines = lines.filter(line => line.trim() !== "");
+
+    // Check for duplicate: same driverID AND same date
+    for (let line of lines) {
+        let parts = line.split(",");
+        let id = parts[0].trim();
+        let date = parts[2].trim();
+
+        if (id === shiftObj.driverID && date === shiftObj.date) {
+            return {};
+        }
+    }
+
+    let shiftDuration = getShiftDuration(shiftObj.startTime, shiftObj.endTime);
+    let idleTime = getIdleTime(shiftObj.startTime, shiftObj.endTime);
+    let activeTime = getActiveTime(shiftDuration, idleTime);
+    let quotaMet = metQuota(shiftObj.date, activeTime);
+    let hasBonus = false;
+
+    let newRecord =
+        shiftObj.driverID + "," +
+        shiftObj.driverName + "," +
+        shiftObj.date + "," +
+        shiftObj.startTime + "," +
+        shiftObj.endTime + "," +
+        shiftDuration + "," +
+        idleTime + "," +
+        activeTime + "," +
+        quotaMet + "," +
+        hasBonus;
+
+    // Find the insertion point: after the last record of this driverID
+    let lastIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+        let parts = lines[i].split(",");
+        if (parts[0].trim() === shiftObj.driverID) {
+            lastIndex = i;
+        }
+    }
+
+    if (lastIndex === -1) {
+        // Driver not found at all — append to end
+        lines.push(newRecord);
+    } else {
+        // Insert after the last record of this driverID
+        lines.splice(lastIndex + 1, 0, newRecord);
+    }
+
+    fs.writeFileSync(textFile, lines.join("\n"));
+
+    return {
+        driverID: shiftObj.driverID,
+        driverName: shiftObj.driverName,
+        date: shiftObj.date,
+        startTime: shiftObj.startTime,
+        endTime: shiftObj.endTime,
+        shiftDuration: shiftDuration,
+        idleTime: idleTime,
+        activeTime: activeTime,
+        metQuota: quotaMet,
+        hasBonus: false
+    };
+}
+
+// ============================================================
+// Function 6: setBonus(textFile, driverID, date, newValue)
+// textFile: (typeof string) path to shifts text file
+// driverID: (typeof string)
+// date: (typeof string) formatted as yyyy-mm-dd
+// newValue: (typeof boolean)
+// Returns: nothing (void)
+// ============================================================
+function setBonus(textFile, driverID, date, newValue) {
+    let data = fs.readFileSync(textFile, "utf8");
+
+    let lines = data.trim().split("\n");
+
+    for (let i = 0; i < lines.length; i++) {
+        let parts = lines[i].split(",");
+
+        if (parts[0].trim() === driverID && parts[2].trim() === date) {
+            parts[9] = newValue;
+            lines[i] = parts.join(",");
+        }
+    }
+
+    fs.writeFileSync(textFile, lines.join("\n"));
+}
+
+// ============================================================
+// Function 7: countBonusPerMonth(textFile, driverID, month)
+// textFile: (typeof string) path to shifts text file
+// driverID: (typeof string)
+// month: (typeof string) formatted as mm or m
+// Returns: number (-1 if driverID not found)
+// ============================================================
+function countBonusPerMonth(textFile, driverID, month) {
+    let lines = fs.readFileSync(textFile, "utf8").trim().split("\n");
+
+    let found = false;
+    let count = 0;
+
+    for (let line of lines) {
+        if (line.trim() === "") continue;
+
+        let cols = line.split(",");
+
+        if (cols[0].trim() === driverID) {
+            found = true;
+
+            let recordMonth = Number(cols[2].trim().split("-")[1]);
+            let bonusValue = cols[9].trim().toLowerCase();
+
+            if (recordMonth === Number(month) && bonusValue === "true") {
+                count++;
+            }
+        }
+    }
+
+    if (!found) return -1;
+
+    return count;
+}
