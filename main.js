@@ -1,5 +1,68 @@
 const fs = require("fs");
 
+
+
+function convertToSeconds(timeStr) { // Helper function to convert time string to seconds
+
+    let parts = timeStr.trim().split(" ");
+    let time = parts[0];
+    let period = parts[1].toLowerCase();
+
+    let timeParts = time.split(":");
+
+    let hours = parseInt(timeParts[0]);
+    let minutes = parseInt(timeParts[1]);
+    let seconds = parseInt(timeParts[2]);
+
+    if (period === "pm" && hours !== 12) {
+        hours += 12;
+    }
+
+    if (period === "am" && hours === 12) {
+        hours = 0;
+    }
+
+    return hours * 3600 + minutes * 60 + seconds;
+}
+
+
+
+function convertSecondsToTime(totalSeconds) {   // Helper function to convert seconds back to time string
+
+    let hours = Math.floor(totalSeconds / 3600);
+    let remaining = totalSeconds % 3600;
+
+    let minutes = Math.floor(remaining / 60);
+    let seconds = remaining % 60;
+
+    minutes = minutes.toString().padStart(2, "0");
+    seconds = seconds.toString().padStart(2, "0");
+
+    return hours + ":" + minutes + ":" + seconds;
+}
+
+
+
+function convertDurationToSeconds(duration) {  // Helper function to convert duration string to seconds
+
+    let parts = duration.split(":");
+
+    let hours = parseInt(parts[0]);
+    let minutes = parseInt(parts[1]);
+    let seconds = parseInt(parts[2]);
+
+    return hours * 3600 + minutes * 60 + seconds;
+}
+
+
+// Helper to get the day name (e.g. "Saturday") from a yyyy-mm-dd date string
+function getDayName(dateStr) {
+    let d = new Date(dateStr + "T00:00:00");
+    let days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return days[d.getDay()];
+}
+
+
 // ============================================================
 // Function 1: getShiftDuration(startTime, endTime)
 // startTime: (typeof string) formatted as hh:mm:ss am or hh:mm:ss pm
@@ -7,7 +70,12 @@ const fs = require("fs");
 // Returns: string formatted as h:mm:ss
 // ============================================================
 function getShiftDuration(startTime, endTime) {
-    // TODO: Implement this function
+    let startSeconds = convertToSeconds(startTime);
+    let endSeconds = convertToSeconds(endTime);
+
+    let durationSeconds = endSeconds - startSeconds;
+
+    return convertSecondsToTime(durationSeconds);
 }
 
 // ============================================================
@@ -17,7 +85,29 @@ function getShiftDuration(startTime, endTime) {
 // Returns: string formatted as h:mm:ss
 // ============================================================
 function getIdleTime(startTime, endTime) {
-    // TODO: Implement this function
+    let start = convertToSeconds(startTime);
+    let end = convertToSeconds(endTime);
+
+    let deliveryStart = convertToSeconds("8:00:00 am");
+    let deliveryEnd = convertToSeconds("10:00:00 pm");
+
+    let idle = 0;
+
+    // Time before delivery window starts
+    if (start < deliveryStart) {
+        // Idle is from start to min(end, deliveryStart)
+        let idleEnd = Math.min(end, deliveryStart);
+        idle += idleEnd - start;
+    }
+
+    // Time after delivery window ends
+    if (end > deliveryEnd) {
+        // Idle is from max(start, deliveryEnd) to end
+        let idleStart = Math.max(start, deliveryEnd);
+        idle += end - idleStart;
+    }
+
+    return convertSecondsToTime(idle);
 }
 
 // ============================================================
@@ -27,7 +117,12 @@ function getIdleTime(startTime, endTime) {
 // Returns: string formatted as h:mm:ss
 // ============================================================
 function getActiveTime(shiftDuration, idleTime) {
-    // TODO: Implement this function
+    let shiftSeconds = convertDurationToSeconds(shiftDuration);
+    let idleSeconds = convertDurationToSeconds(idleTime);
+
+    let activeSeconds = shiftSeconds - idleSeconds;
+
+    return convertSecondsToTime(activeSeconds);
 }
 
 // ============================================================
@@ -37,87 +132,18 @@ function getActiveTime(shiftDuration, idleTime) {
 // Returns: boolean
 // ============================================================
 function metQuota(date, activeTime) {
-    // TODO: Implement this function
-}
+    let activeSeconds = convertDurationToSeconds(activeTime);
 
-// ============================================================
-// Function 5: addShiftRecord(textFile, shiftObj)
-// textFile: (typeof string) path to shifts text file
-// shiftObj: (typeof object) has driverID, driverName, date, startTime, endTime
-// Returns: object with 10 properties or empty object {}
-// ============================================================
-function addShiftRecord(textFile, shiftObj) {
-    // TODO: Implement this function
-}
+    let normalQuota = convertDurationToSeconds("8:24:00");
+    let eidQuota = convertDurationToSeconds("6:00:00");
 
-// ============================================================
-// Function 6: setBonus(textFile, driverID, date, newValue)
-// textFile: (typeof string) path to shifts text file
-// driverID: (typeof string)
-// date: (typeof string) formatted as yyyy-mm-dd
-// newValue: (typeof boolean)
-// Returns: nothing (void)
-// ============================================================
-function setBonus(textFile, driverID, date, newValue) {
-    // TODO: Implement this function
-}
+    let quota;
 
-// ============================================================
-// Function 7: countBonusPerMonth(textFile, driverID, month)
-// textFile: (typeof string) path to shifts text file
-// driverID: (typeof string)
-// month: (typeof string) formatted as mm or m
-// Returns: number (-1 if driverID not found)
-// ============================================================
-function countBonusPerMonth(textFile, driverID, month) {
-    // TODO: Implement this function
-}
+    if (date >= "2025-04-10" && date <= "2025-04-30") {
+        quota = eidQuota;
+    } else {
+        quota = normalQuota;
+    }
 
-// ============================================================
-// Function 8: getTotalActiveHoursPerMonth(textFile, driverID, month)
-// textFile: (typeof string) path to shifts text file
-// driverID: (typeof string)
-// month: (typeof number)
-// Returns: string formatted as hhh:mm:ss
-// ============================================================
-function getTotalActiveHoursPerMonth(textFile, driverID, month) {
-    // TODO: Implement this function
+    return activeSeconds >= quota;
 }
-
-// ============================================================
-// Function 9: getRequiredHoursPerMonth(textFile, rateFile, bonusCount, driverID, month)
-// textFile: (typeof string) path to shifts text file
-// rateFile: (typeof string) path to driver rates text file
-// bonusCount: (typeof number) total bonuses for given driver per month
-// driverID: (typeof string)
-// month: (typeof number)
-// Returns: string formatted as hhh:mm:ss
-// ============================================================
-function getRequiredHoursPerMonth(textFile, rateFile, bonusCount, driverID, month) {
-    // TODO: Implement this function
-}
-
-// ============================================================
-// Function 10: getNetPay(driverID, actualHours, requiredHours, rateFile)
-// driverID: (typeof string)
-// actualHours: (typeof string) formatted as hhh:mm:ss
-// requiredHours: (typeof string) formatted as hhh:mm:ss
-// rateFile: (typeof string) path to driver rates text file
-// Returns: integer (net pay)
-// ============================================================
-function getNetPay(driverID, actualHours, requiredHours, rateFile) {
-    // TODO: Implement this function
-}
-
-module.exports = {
-    getShiftDuration,
-    getIdleTime,
-    getActiveTime,
-    metQuota,
-    addShiftRecord,
-    setBonus,
-    countBonusPerMonth,
-    getTotalActiveHoursPerMonth,
-    getRequiredHoursPerMonth,
-    getNetPay
-};
