@@ -285,3 +285,163 @@ function countBonusPerMonth(textFile, driverID, month) {
 
     return count;
 }
+
+
+// ============================================================
+// Function 8: getTotalActiveHoursPerMonth(textFile, driverID, month)
+// textFile: (typeof string) path to shifts text file
+// driverID: (typeof string)
+// month: (typeof number)
+// Returns: string formatted as hhh:mm:ss
+// ============================================================
+function getTotalActiveHoursPerMonth(textFile, driverID, month) {
+    let data = fs.readFileSync(textFile, "utf8");
+
+    let lines = data.trim().split("\n");
+
+    let total = 0;
+
+    for (let line of lines) {
+        if (line.trim() === "") continue;
+
+        let parts = line.split(",");
+
+        if (parts[0].trim() === driverID) {
+            let date = parts[2].trim();
+            let active = parts[7].trim();
+
+            let monthFromDate = parseInt(date.split("-")[1]);
+
+            if (monthFromDate === month) {
+                total += convertDurationToSeconds(active);
+            }
+        }
+    }
+
+    return convertSecondsToTime(total);
+}
+
+// ============================================================
+// Function 9: getRequiredHoursPerMonth(textFile, rateFile, bonusCount, driverID, month)
+// textFile: (typeof string) path to shifts text file
+// rateFile: (typeof string) path to driver rates text file
+// bonusCount: (typeof number) total bonuses for given driver per month
+// driverID: (typeof string)
+// month: (typeof number)
+// Returns: string formatted as hhh:mm:ss
+// ============================================================
+function getRequiredHoursPerMonth(textFile, rateFile, bonusCount, driverID, month) {
+    let shifts = fs.readFileSync(textFile, "utf8").trim().split("\n");
+    let rates = fs.readFileSync(rateFile, "utf8").trim().split("\n");
+
+    // Find the driver's day off
+    let dayOff = "";
+    for (let line of rates) {
+        if (line.trim() === "") continue;
+        let parts = line.split(",");
+        if (parts[0].trim() === driverID) {
+            dayOff = parts[1].trim();
+        }
+    }
+
+    let total = 0;
+
+    for (let line of shifts) {
+        if (line.trim() === "") continue;
+
+        let parts = line.split(",");
+
+        if (parts[0].trim() === driverID) {
+            let date = parts[2].trim();
+            let monthFromDate = parseInt(date.split("-")[1]);
+
+            if (monthFromDate === month) {
+                // Skip days that fall on the driver's day off
+                let dayName = getDayName(date);
+                if (dayName === dayOff) continue;
+
+                let quota;
+                if (date >= "2025-04-10" && date <= "2025-04-30") {
+                    quota = convertDurationToSeconds("6:00:00");
+                } else {
+                    quota = convertDurationToSeconds("8:24:00");
+                }
+
+                total += quota;
+            }
+        }
+    }
+
+    // Each bonus reduces required hours by 2 hours
+    total -= bonusCount * 2 * 3600;
+
+    // Ensure total doesn't go negative
+    if (total < 0) total = 0;
+
+    return convertSecondsToTime(total);
+}
+
+// ============================================================
+// Function 10: getNetPay(driverID, actualHours, requiredHours, rateFile)
+// driverID: (typeof string)
+// actualHours: (typeof string) formatted as hhh:mm:ss
+// requiredHours: (typeof string) formatted as hhh:mm:ss
+// rateFile: (typeof string) path to driver rates text file
+// Returns: integer (net pay)
+// ============================================================
+function getNetPay(driverID, actualHours, requiredHours, rateFile) {
+    let rates = fs.readFileSync(rateFile, "utf8").trim().split("\n");
+
+    let basePay = 0;
+    let tier = 0;
+
+    for (let line of rates) {
+        if (line.trim() === "") continue;
+
+        let parts = line.split(",");
+
+        if (parts[0].trim() === driverID) {
+            basePay = parseInt(parts[2].trim());
+            tier = parseInt(parts[3].trim());
+        }
+    }
+
+    // Tier -> allowed missing hours (no deduction)
+    let allowed = [0, 50, 20, 10, 3];
+
+    let actual = convertDurationToSeconds(actualHours);
+    let required = convertDurationToSeconds(requiredHours);
+
+    // No deduction if actual >= required
+    if (actual >= required) return basePay;
+
+    let missing = required - actual;
+
+    // Subtract the allowed grace hours for this tier
+    missing -= allowed[tier] * 3600;
+
+    // If missing is within the allowed range, no deduction
+    if (missing <= 0) return basePay;
+
+    // Only full hours are billable
+    let billableHours = Math.floor(missing / 3600);
+
+    let deductionRate = Math.floor(basePay / 185);
+
+    let deduction = billableHours * deductionRate;
+
+    return basePay - deduction;
+}
+
+module.exports = {
+    getShiftDuration,
+    getIdleTime,
+    getActiveTime,
+    metQuota,
+    addShiftRecord,
+    setBonus,
+    countBonusPerMonth,
+    getTotalActiveHoursPerMonth,
+    getRequiredHoursPerMonth,
+    getNetPay
+};
